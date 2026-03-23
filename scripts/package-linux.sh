@@ -14,6 +14,7 @@ mkdir -p "$PACKAGE_ROOT/scripts" "$PACKAGE_ROOT/deploy"
 
 cp "$ROOT_DIR/dist/$APP_NAME" "$PACKAGE_ROOT/$APP_NAME"
 cp "$ROOT_DIR/bot_settings.json" "$PACKAGE_ROOT/bot_settings.json"
+cp "$ROOT_DIR/config.example.json" "$PACKAGE_ROOT/config.example.json"
 cp "$ROOT_DIR/README.md" "$PACKAGE_ROOT/README.md"
 cp "$ROOT_DIR/scripts/run-linux.sh" "$PACKAGE_ROOT/scripts/run-linux.sh"
 cp "$ROOT_DIR/scripts/install-service.sh" "$PACKAGE_ROOT/scripts/install-service.sh"

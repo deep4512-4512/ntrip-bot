@@ -124,10 +124,14 @@ Default installation path:
 
 The installer:
 - copies the binary to `/opt/ntrip-bot`
+- copies `config.example.json` into the release archive
 - copies `bot_settings.json` if it does not exist yet
 - copies `config.json` if it is included in the package directory
+- creates an optional environment file if it does not exist yet
+- can create a system user and group automatically
 - creates `/etc/systemd/system/ntrip-bot.service`
 - enables and restarts the service
+- writes service output to both `journalctl` and `/var/log/ntrip-bot/service.log`
 
 You can override:
 - `APP_NAME`
@@ -135,11 +139,33 @@ You can override:
 - `SERVICE_NAME`
 - `SERVICE_USER`
 - `SERVICE_GROUP`
+- `ENV_FILE`
+- `AUTO_CREATE_USER`
 
 Example:
 
 ```bash
 sudo INSTALL_DIR=/srv/ntrip-bot SERVICE_NAME=custom-ntrip SERVICE_USER=botuser SERVICE_GROUP=botuser sh ./scripts/install-service.sh
+```
+
+Default environment file:
+
+```text
+/etc/default/ntrip-bot
+```
+
+Example overrides:
+
+```bash
+TZ=UTC
+GOTRACEBACK=single
+```
+
+Service logs:
+
+```bash
+journalctl -u ntrip-bot -f
+tail -f /var/log/ntrip-bot/service.log
 ```
 
 ## Windows

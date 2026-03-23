@@ -8,9 +8,12 @@ Type=simple
 User=__SERVICE_USER__
 Group=__SERVICE_GROUP__
 WorkingDirectory=__INSTALL_DIR__
-ExecStart=__INSTALL_DIR__/__APP_NAME__
+EnvironmentFile=-__ENV_FILE__
+LogsDirectory=__SERVICE_NAME__
+ExecStart=/bin/sh -c 'exec __INSTALL_DIR__/__APP_NAME__ 2>&1 | tee -a /var/log/__SERVICE_NAME__/service.log'
 Restart=always
 RestartSec=5
+SyslogIdentifier=__SERVICE_NAME__
 
 [Install]
 WantedBy=multi-user.target
