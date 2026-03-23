@@ -103,17 +103,16 @@ dist/ntrip-bot-linux-amd64-YYYYMMDD-HHMMSS.tar.gz
 On the target Linux host:
 
 1. Unpack the archive
-2. Prepare `config.json`
-3. Run the installer as root
+2. Run `./install.sh`
+3. Answer the interactive questions if `config.json` does not exist yet
+4. If needed, run `./install.sh` again after adjusting the config manually
 
 Example:
 
 ```bash
 tar -xzf ntrip-bot-linux-amd64-YYYYMMDD-HHMMSS.tar.gz
 cd ntrip-bot-linux-amd64
-cp config.example.json config.json
-# edit config.json with real values
-sudo SERVICE_USER=ntrip SERVICE_GROUP=ntrip sh ./scripts/install-service.sh
+./install.sh
 ```
 
 Default installation path:
@@ -127,6 +126,7 @@ The installer:
 - copies `config.example.json` into the release archive
 - copies `bot_settings.json` if it does not exist yet
 - copies `config.json` if it is included in the package directory
+- can create `config.json` interactively from console input
 - creates an optional environment file if it does not exist yet
 - can create a system user and group automatically
 - creates `/etc/systemd/system/ntrip-bot.service`
@@ -205,7 +205,9 @@ A safe template is included in:
 config.example.json
 ```
 
-For Linux deployment, copy it to `config.json` and replace the placeholder values before installation.
+For Linux deployment, you can either:
+- let `./install.sh` create `config.json` interactively
+- or copy `config.example.json` to `config.json` and edit it manually
 
 Example:
 
