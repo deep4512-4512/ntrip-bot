@@ -34,6 +34,12 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "release_tag=$VERSION" >> "$GITHUB_OUTPUT"
 
+      - name: Make scripts executable
+        shell: bash
+        run: |
+          chmod +x ./scripts/*.sh
+          chmod +x ./install.sh
+
       - name: Build release archive
         shell: bash
         run: |

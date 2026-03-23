@@ -7,7 +7,7 @@ VERSION=${VERSION:-$(date +%Y%m%d-%H%M%S)}
 PACKAGE_ROOT="$ROOT_DIR/dist/${APP_NAME}-linux-amd64"
 ARCHIVE_PATH="$ROOT_DIR/dist/${APP_NAME}-linux-amd64-${VERSION}.tar.gz"
 
-"$ROOT_DIR/scripts/build-linux.sh"
+sh "$ROOT_DIR/scripts/build-linux.sh"
 
 rm -rf "$PACKAGE_ROOT"
 mkdir -p "$PACKAGE_ROOT/scripts" "$PACKAGE_ROOT/deploy"
