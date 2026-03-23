@@ -1,0 +1,16 @@
+[Unit]
+Description=NTRIP Telegram Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__SERVICE_USER__
+Group=__SERVICE_GROUP__
+WorkingDirectory=__INSTALL_DIR__
+ExecStart=__INSTALL_DIR__/__APP_NAME__
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

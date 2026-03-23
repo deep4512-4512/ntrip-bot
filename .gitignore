@@ -3,3 +3,4 @@ bot.log
 .gocache/
 .gomodcache/
 *.exe
+dist/

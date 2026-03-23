@@ -1,0 +1,19 @@
+{
+  "telegram_token": "123456789:replace_with_real_token",
+  "users": {
+    "123456789": {
+      "mounts": [
+        {
+          "name": "Base1",
+          "host": "caster.example.com",
+          "port": "2101",
+          "user": "user",
+          "password": "password",
+          "mount": "MOUNT1",
+          "timeout": 5,
+          "min_sats": 10
+        }
+      ]
+    }
+  }
+}

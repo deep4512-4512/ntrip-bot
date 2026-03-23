@@ -63,10 +63,84 @@ Simple shortcuts are included:
 ```bash
 make run
 make build
+make linux-build
+make linux-package
 make clean
 ```
 
 They use local `.gocache` and `.gomodcache` directories inside the project.
+
+## Linux Deployment Package
+
+For Linux deployment, the repository now includes:
+
+- `scripts/build-linux.sh` to build a Linux binary
+- `scripts/run-linux.sh` to run the built binary
+- `scripts/package-linux.sh` to create a release archive
+- `scripts/install-service.sh` to install the binary and create a `systemd` service
+- `deploy/ntrip-bot.service` as the service template
+
+Build a Linux binary:
+
+```bash
+sh ./scripts/build-linux.sh
+```
+
+Create a release archive:
+
+```bash
+sh ./scripts/package-linux.sh
+```
+
+This creates a file like:
+
+```text
+dist/ntrip-bot-linux-amd64-YYYYMMDD-HHMMSS.tar.gz
+```
+
+## Install As a Service
+
+On the target Linux host:
+
+1. Unpack the archive
+2. Prepare `config.json`
+3. Run the installer as root
+
+Example:
+
+```bash
+tar -xzf ntrip-bot-linux-amd64-YYYYMMDD-HHMMSS.tar.gz
+cd ntrip-bot-linux-amd64
+cp config.example.json config.json
+# edit config.json with real values
+sudo SERVICE_USER=ntrip SERVICE_GROUP=ntrip sh ./scripts/install-service.sh
+```
+
+Default installation path:
+
+```text
+/opt/ntrip-bot
+```
+
+The installer:
+- copies the binary to `/opt/ntrip-bot`
+- copies `bot_settings.json` if it does not exist yet
+- copies `config.json` if it is included in the package directory
+- creates `/etc/systemd/system/ntrip-bot.service`
+- enables and restarts the service
+
+You can override:
+- `APP_NAME`
+- `INSTALL_DIR`
+- `SERVICE_NAME`
+- `SERVICE_USER`
+- `SERVICE_GROUP`
+
+Example:
+
+```bash
+sudo INSTALL_DIR=/srv/ntrip-bot SERVICE_NAME=custom-ntrip SERVICE_USER=botuser SERVICE_GROUP=botuser sh ./scripts/install-service.sh
+```
 
 ## Windows
 
@@ -98,6 +172,14 @@ go run .
 ### `config.json`
 
 Created automatically. Stores the bot token and per-user mount points.
+
+A safe template is included in:
+
+```text
+config.example.json
+```
+
+For Linux deployment, copy it to `config.json` and replace the placeholder values before installation.
 
 Example:
 
