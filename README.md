@@ -134,6 +134,12 @@ With `curl`:
 mkdir -p /tmp/ntrip-bot-install && cd /tmp/ntrip-bot-install && curl -L -o ntrip-bot-linux-amd64.tar.gz https://github.com/deep4512-4512/ntrip-bot/releases/latest/download/ntrip-bot-linux-amd64.tar.gz && tar -xzf ntrip-bot-linux-amd64.tar.gz && cd ntrip-bot-linux-amd64 && ./install.sh
 ```
 
+One-line install and check with `wget`:
+
+```bash
+mkdir -p /tmp/ntrip-bot-install && cd /tmp/ntrip-bot-install && wget -O ntrip-bot-linux-amd64.tar.gz https://github.com/deep4512-4512/ntrip-bot/releases/latest/download/ntrip-bot-linux-amd64.tar.gz && tar -xzf ntrip-bot-linux-amd64.tar.gz && cd ntrip-bot-linux-amd64 && ./install.sh && sudo systemctl status ntrip-bot --no-pager && sudo journalctl -u ntrip-bot -n 50 --no-pager
+```
+
 After installation:
 
 ```bash
