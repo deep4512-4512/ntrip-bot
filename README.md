@@ -27,9 +27,11 @@ The bot:
 
 ## Quick Start
 
+Linux is the primary target environment.
+
 From the project root:
 
-```powershell
+```bash
 go run .
 ```
 
@@ -37,25 +39,58 @@ If `config.json` does not exist, the bot will ask for the Telegram token in the 
 
 ## Build
 
+```bash
+go build -o ntrip-bot .
+./ntrip-bot
+```
+
+If you want local Go caches inside the project directory:
+
+```bash
+GOCACHE=$PWD/.gocache GOMODCACHE=$PWD/.gomodcache go run .
+```
+
+Or for build:
+
+```bash
+GOCACHE=$PWD/.gocache GOMODCACHE=$PWD/.gomodcache go build -o ntrip-bot .
+```
+
+## Makefile
+
+Simple shortcuts are included:
+
+```bash
+make run
+make build
+make clean
+```
+
+They use local `.gocache` and `.gomodcache` directories inside the project.
+
+## Windows
+
+Windows still works, but it is now a secondary environment.
+
+Run:
+
+```powershell
+go run .
+```
+
+Build:
+
 ```powershell
 go build -o ntrip-bot.exe .
 .\ntrip-bot.exe
 ```
 
-If Windows causes problems with the default Go cache, run with local cache paths:
+If Windows causes problems with the default Go cache:
 
 ```powershell
 $env:GOCACHE='c:\Users\deep\go\ntrip-bot\.gocache'
 $env:GOMODCACHE='c:\Users\deep\go\ntrip-bot\.gomodcache'
 go run .
-```
-
-Or for build:
-
-```powershell
-$env:GOCACHE='c:\Users\deep\go\ntrip-bot\.gocache'
-$env:GOMODCACHE='c:\Users\deep\go\ntrip-bot\.gomodcache'
-go build -o ntrip-bot.exe .
 ```
 
 ## Configuration
