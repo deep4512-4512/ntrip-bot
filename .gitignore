@@ -1,0 +1,5 @@
+config.json
+bot.log
+.gocache/
+.gomodcache/
+*.exe

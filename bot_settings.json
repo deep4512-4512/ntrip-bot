@@ -1,0 +1,4 @@
+{
+  "dashboard_ttl_minutes": 5,
+  "stream_idle_ttl_minutes": 10
+}
