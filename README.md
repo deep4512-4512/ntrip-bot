@@ -98,6 +98,28 @@ This creates a file like:
 dist/ntrip-bot-linux-amd64-YYYYMMDD-HHMMSS.tar.gz
 ```
 
+## Download From GitHub Releases
+
+Once a GitHub Release is published, the latest Linux package can be downloaded directly:
+
+```bash
+wget https://github.com/deep4512-4512/ntrip-bot/releases/latest/download/ntrip-bot-linux-amd64.tar.gz
+```
+
+Or with `curl`:
+
+```bash
+curl -L -o ntrip-bot-linux-amd64.tar.gz https://github.com/deep4512-4512/ntrip-bot/releases/latest/download/ntrip-bot-linux-amd64.tar.gz
+```
+
+Then install:
+
+```bash
+tar -xzf ntrip-bot-linux-amd64.tar.gz
+cd ntrip-bot-linux-amd64
+./install.sh
+```
+
 ## Install As a Service
 
 On the target Linux host:

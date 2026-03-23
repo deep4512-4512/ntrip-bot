@@ -1,0 +1,51 @@
+name: Release Linux Package
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release-linux:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Prepare version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            VERSION="${GITHUB_REF_NAME}"
+          else
+            VERSION="manual-${GITHUB_RUN_NUMBER}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "release_tag=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Build release archive
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.version }}" sh ./scripts/package-linux.sh
+          cp "dist/ntrip-bot-linux-amd64-${{ steps.version.outputs.version }}.tar.gz" dist/ntrip-bot-linux-amd64.tar.gz
+
+      - name: Create or update release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.release_tag }}
+          name: ${{ steps.version.outputs.release_tag }}
+          generate_release_notes: true
+          files: |
+            dist/ntrip-bot-linux-amd64-${{ steps.version.outputs.version }}.tar.gz
+            dist/ntrip-bot-linux-amd64.tar.gz
