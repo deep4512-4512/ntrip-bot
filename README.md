@@ -176,6 +176,7 @@ The installer:
 - copies `config.example.json` into the release archive
 - copies `bot_settings.json` if it does not exist yet
 - copies `config.json` if it is included in the package directory
+- installs `update.sh` into the target directory
 - can create `config.json` interactively from console input
 - creates an optional environment file if it does not exist yet
 - can create a system user and group automatically
@@ -210,6 +211,26 @@ Example overrides:
 TZ=UTC
 GOTRACEBACK=single
 ```
+
+## Update On Server
+
+After the first installation, update directly on the server:
+
+```bash
+sudo /opt/ntrip-bot/update.sh
+```
+
+To update to a specific release:
+
+```bash
+sudo RELEASE_TAG=v1.0.2 /opt/ntrip-bot/update.sh
+```
+
+The updater:
+- downloads the release archive from GitHub
+- extracts it into a temporary directory
+- preserves the existing `config.json`
+- installs the new binary and restarts the service
 
 Service logs:
 
