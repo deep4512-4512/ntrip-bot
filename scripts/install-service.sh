@@ -41,6 +41,9 @@ install -m 0755 "$PACKAGE_DIR/$APP_NAME" "$INSTALL_DIR/$APP_NAME"
 if [ -f "$PACKAGE_DIR/update.sh" ]; then
   install -m 0755 "$PACKAGE_DIR/update.sh" "$INSTALL_DIR/update.sh"
 fi
+if [ -f "$PACKAGE_DIR/remove.sh" ]; then
+  install -m 0755 "$PACKAGE_DIR/remove.sh" "$INSTALL_DIR/remove.sh"
+fi
 
 if [ -f "$PACKAGE_DIR/bot_settings.json" ] && [ ! -f "$INSTALL_DIR/bot_settings.json" ]; then
   install -m 0644 "$PACKAGE_DIR/bot_settings.json" "$INSTALL_DIR/bot_settings.json"

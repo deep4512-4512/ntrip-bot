@@ -177,6 +177,7 @@ The installer:
 - copies `bot_settings.json` if it does not exist yet
 - copies `config.json` if it is included in the package directory
 - installs `update.sh` into the target directory
+- installs `remove.sh` into the target directory
 - can create `config.json` interactively from console input
 - creates an optional environment file if it does not exist yet
 - can create a system user and group automatically
@@ -231,6 +232,20 @@ The updater:
 - extracts it into a temporary directory
 - preserves the existing `config.json`
 - installs the new binary and restarts the service
+
+## Remove From Server
+
+Remove only the service and executable files, but keep config and data:
+
+```bash
+sudo /opt/ntrip-bot/remove.sh
+```
+
+Remove everything including install directory, environment file, and logs:
+
+```bash
+sudo REMOVE_DATA=1 /opt/ntrip-bot/remove.sh
+```
 
 Service logs:
 
