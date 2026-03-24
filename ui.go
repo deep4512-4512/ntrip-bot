@@ -21,6 +21,8 @@ func formatMountState(state MountState) string {
 
 	if state.Connected {
 		b.WriteString("Status: " + onlineEmoji() + " Online\n")
+	} else if state.Connecting {
+		b.WriteString("Status: " + connectingEmoji() + " Connecting\n")
 	} else {
 		b.WriteString("Status: " + offlineEmoji() + " Offline\n")
 	}
@@ -93,6 +95,10 @@ func onlineEmoji() string {
 
 func offlineEmoji() string {
 	return "\U0001F534"
+}
+
+func connectingEmoji() string {
+	return "\U0001F7E1"
 }
 
 func settingsEmoji() string {

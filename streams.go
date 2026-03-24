@@ -14,13 +14,14 @@ import (
 )
 
 type MountState struct {
-	ChatID    int64
-	Name      string
-	Data      map[string]map[int]float64
-	Connected bool
-	LastError string
-	UpdatedAt time.Time
-	MsgCount  uint64
+	ChatID     int64
+	Name       string
+	Data       map[string]map[int]float64
+	Connected  bool
+	Connecting bool
+	LastError  string
+	UpdatedAt  time.Time
+	MsgCount   uint64
 }
 
 type mountWorker struct {
@@ -61,14 +62,26 @@ func (w *mountWorker) snapshot() MountState {
 	defer w.mu.RUnlock()
 
 	return MountState{
-		ChatID:    w.state.ChatID,
-		Name:      w.state.Name,
-		Data:      cloneData(w.state.Data),
-		Connected: w.state.Connected,
-		LastError: w.state.LastError,
-		UpdatedAt: w.state.UpdatedAt,
-		MsgCount:  w.state.MsgCount,
+		ChatID:     w.state.ChatID,
+		Name:       w.state.Name,
+		Data:       cloneData(w.state.Data),
+		Connected:  w.state.Connected,
+		Connecting: w.state.Connecting,
+		LastError:  w.state.LastError,
+		UpdatedAt:  w.state.UpdatedAt,
+		MsgCount:   w.state.MsgCount,
 	}
+}
+
+func (w *mountWorker) setConnecting() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	w.state.Name = w.cfg.Name
+	w.state.ChatID = w.chatID
+	w.state.Connected = false
+	w.state.Connecting = true
+	w.state.LastError = ""
 }
 
 func (w *mountWorker) setConnected() {
@@ -78,6 +91,7 @@ func (w *mountWorker) setConnected() {
 	w.state.Name = w.cfg.Name
 	w.state.ChatID = w.chatID
 	w.state.Connected = true
+	w.state.Connecting = false
 	w.state.LastError = ""
 }
 
@@ -89,6 +103,7 @@ func (w *mountWorker) setDisconnected(err error) {
 	w.state.Name = w.cfg.Name
 	w.state.ChatID = w.chatID
 	w.state.Connected = false
+	w.state.Connecting = false
 	if err != nil {
 		w.state.LastError = err.Error()
 	}
@@ -132,6 +147,7 @@ func (w *mountWorker) updateData(sys string, sats []int, snr []float64) uint64 {
 	w.state.Name = w.cfg.Name
 	w.state.ChatID = w.chatID
 	w.state.Connected = true
+	w.state.Connecting = false
 	w.state.LastError = ""
 	w.state.UpdatedAt = time.Now()
 	w.state.MsgCount++
@@ -365,6 +381,7 @@ func (w *mountWorker) run() {
 		default:
 		}
 
+		w.setConnecting()
 		logInfo("connecting mount %s (%s:%s/%s)", w.cfg.Name, w.cfg.Host, w.cfg.Port, w.cfg.Mount)
 		conn, reader, err := connectMount(w.cfg)
 		if err != nil {
