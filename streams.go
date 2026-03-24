@@ -29,6 +29,7 @@ type mountWorker struct {
 	mu     sync.RWMutex
 	state  MountState
 	stop   chan struct{}
+	conn   net.Conn
 }
 
 var (
@@ -84,11 +85,30 @@ func (w *mountWorker) setDisconnected(err error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
+	w.conn = nil
 	w.state.Name = w.cfg.Name
 	w.state.ChatID = w.chatID
 	w.state.Connected = false
 	if err != nil {
 		w.state.LastError = err.Error()
+	}
+}
+
+func (w *mountWorker) setConn(conn net.Conn) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	w.conn = conn
+}
+
+func (w *mountWorker) closeConn() {
+	w.mu.Lock()
+	conn := w.conn
+	w.conn = nil
+	w.mu.Unlock()
+
+	if conn != nil {
+		_ = conn.Close()
 	}
 }
 
@@ -173,6 +193,7 @@ func stopMountStreams(chatID int64) {
 
 	for _, worker := range workers {
 		close(worker.stop)
+		worker.closeConn()
 	}
 }
 
@@ -357,10 +378,19 @@ func (w *mountWorker) run() {
 			continue
 		}
 
+		w.setConn(conn)
 		w.setConnected()
 		logInfo("stream connected for mount %s", w.cfg.Name)
 
 		for {
+			select {
+			case <-w.stop:
+				w.setDisconnected(nil)
+				w.closeConn()
+				return
+			default:
+			}
+
 			if err := conn.SetReadDeadline(time.Now().Add(idleTimeout)); err != nil {
 				w.setDisconnected(err)
 				break
@@ -387,7 +417,7 @@ func (w *mountWorker) run() {
 			}
 		}
 
-		conn.Close()
+		w.closeConn()
 		logWarn("mount connection closed: name=%s", w.cfg.Name)
 		select {
 		case <-w.stop:
