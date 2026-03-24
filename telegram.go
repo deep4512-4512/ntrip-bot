@@ -47,7 +47,7 @@ func handleCallbackQuery(bot *tgbotapi.BotAPI, up tgbotapi.Update) bool {
 		sendMenu(bot, id, buildDashboardText(id))
 	case "stop":
 		stopDash(id)
-		sendMenu(bot, id, "Dashboard stopped")
+		sendMenu(bot, id, "Monitoring stopped")
 	case "add":
 		beginAddMountFlow(id)
 		sendMenu(bot, id, addMountInstructions())

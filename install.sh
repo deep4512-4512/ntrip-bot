@@ -30,6 +30,10 @@ prompt_secret() {
   printf "%s" "$value"
 }
 
+json_escape() {
+  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
 write_config_interactive() {
   echo "Interactive config setup"
 
@@ -38,6 +42,7 @@ write_config_interactive() {
     echo "Telegram bot token is required."
     telegram_token=$(prompt "Telegram bot token")
   done
+  telegram_token_json=$(json_escape "$telegram_token")
 
   configure_mount=$(prompt "Configure initial mount now? (y/N)" "N")
 
@@ -56,20 +61,27 @@ write_config_interactive() {
     mount_path=$(prompt "Mount path")
     mount_timeout=$(prompt "Mount timeout seconds" "5")
     mount_min_sats=$(prompt "Minimum satellites" "10")
+    chat_id_json=$(json_escape "$chat_id")
+    mount_name_json=$(json_escape "$mount_name")
+    mount_host_json=$(json_escape "$mount_host")
+    mount_port_json=$(json_escape "$mount_port")
+    mount_user_json=$(json_escape "$mount_user")
+    mount_password_json=$(json_escape "$mount_password")
+    mount_path_json=$(json_escape "$mount_path")
 
     cat > "$CONFIG_FILE" <<EOF
 {
-  "telegram_token": "$telegram_token",
+  "telegram_token": "$telegram_token_json",
   "users": {
-    "$chat_id": {
+    "$chat_id_json": {
       "mounts": [
         {
-          "name": "$mount_name",
-          "host": "$mount_host",
-          "port": "$mount_port",
-          "user": "$mount_user",
-          "password": "$mount_password",
-          "mount": "$mount_path",
+          "name": "$mount_name_json",
+          "host": "$mount_host_json",
+          "port": "$mount_port_json",
+          "user": "$mount_user_json",
+          "password": "$mount_password_json",
+          "mount": "$mount_path_json",
           "timeout": $mount_timeout,
           "min_sats": $mount_min_sats
         }
@@ -81,7 +93,7 @@ EOF
   else
     cat > "$CONFIG_FILE" <<EOF
 {
-  "telegram_token": "$telegram_token",
+  "telegram_token": "$telegram_token_json",
   "users": {}
 }
 EOF

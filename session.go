@@ -82,11 +82,11 @@ func startDashboardSession(chatID int64) chan struct{} {
 	return session.DashboardStop
 }
 
-func clearDashboardSession(chatID int64) {
+func clearDashboardSession(chatID int64, stop chan struct{}) {
 	sessionMu.Lock()
 	defer sessionMu.Unlock()
 
-	if session, ok := userSessions[chatID]; ok {
+	if session, ok := userSessions[chatID]; ok && session.DashboardStop == stop {
 		session.DashboardStop = nil
 	}
 }
@@ -132,7 +132,7 @@ func startDash(bot *tgbotapi.BotAPI, id int64) {
 
 	msg, err := bot.Send(tgbotapi.NewMessage(id, "Loading..."))
 	if err != nil {
-		clearDashboardSession(id)
+		clearDashboardSession(id, stop)
 		logError("send loading message: %v", err)
 		return
 	}
@@ -165,7 +165,7 @@ func startDash(bot *tgbotapi.BotAPI, id int64) {
 
 			select {
 			case <-stop:
-				clearDashboardSession(id)
+				clearDashboardSession(id, stop)
 				logInfo("dashboard stopped: chat_id=%d", id)
 				return
 			case <-ticker.C:

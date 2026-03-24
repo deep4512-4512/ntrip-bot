@@ -141,6 +141,10 @@ func buildDashboardText(chatID int64) string {
 
 	out.WriteString(dashboardEmoji() + " NTRIP Monitoring\n")
 	out.WriteString("Updated: " + time.Now().Format("15:04:05") + "\n")
+	if len(states) == 0 {
+		out.WriteString("\nNo mount points configured yet")
+		return out.String()
+	}
 	for _, state := range states {
 		out.WriteString("\n" + formatMountState(state) + "\n")
 	}
