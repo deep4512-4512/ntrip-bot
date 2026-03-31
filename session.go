@@ -27,6 +27,7 @@ type UserSessionState struct {
 	AddMode            bool
 	EditSession        *editSession
 	PendingMountSelect *pendingMountSelection
+	DeleteMountIndex   *int
 	DashboardStop      chan struct{}
 	LastActivity       time.Time
 }
@@ -141,13 +142,13 @@ func startDash(bot *tgbotapi.BotAPI, id int64) {
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
 		lastText := "Loading..."
-		expiresAt := time.Now().Add(dashboardTTL())
+		expiresAt := time.Now().Add(userMonitoringTTL(id))
 
 		for {
 			states := mountStateSnapshot(id)
 			for _, state := range states {
 				if !state.Connected && state.LastError != "" && canAlert(state.Name, 30*time.Second) {
-					if _, sendErr := bot.Send(tgbotapi.NewMessage(id, "offline: "+state.Name)); sendErr != nil {
+					if _, sendErr := bot.Send(tgbotapi.NewMessage(id, "Mount offline: "+state.Name)); sendErr != nil {
 						logError("send alert: %v", sendErr)
 					}
 				}
@@ -171,11 +172,11 @@ func startDash(bot *tgbotapi.BotAPI, id int64) {
 			case <-ticker.C:
 				if time.Now().After(expiresAt) {
 					stopDash(id)
-					msg := fmt.Sprintf("Monitoring stopped automatically after %d minutes", botSettings.DashboardTTLMinutes)
+					msg := fmt.Sprintf("Monitoring stopped automatically after %d minutes", userMonitoringTTLMinutes(id))
 					if _, err := bot.Send(tgbotapi.NewMessage(id, msg)); err != nil {
 						logError("send monitoring ttl message: %v", err)
 					}
-					logInfo("dashboard stopped by ttl: chat_id=%d ttl=%s", id, dashboardTTL())
+					logInfo("dashboard stopped by ttl: chat_id=%d ttl=%s", id, userMonitoringTTL(id))
 					return
 				}
 			}

@@ -19,6 +19,7 @@ type MountState struct {
 	Data       map[string]map[int]float64
 	Connected  bool
 	Connecting bool
+	CheckOnly  bool
 	LastError  string
 	UpdatedAt  time.Time
 	MsgCount   uint64
@@ -67,6 +68,7 @@ func (w *mountWorker) snapshot() MountState {
 		Data:       cloneData(w.state.Data),
 		Connected:  w.state.Connected,
 		Connecting: w.state.Connecting,
+		CheckOnly:  w.state.CheckOnly,
 		LastError:  w.state.LastError,
 		UpdatedAt:  w.state.UpdatedAt,
 		MsgCount:   w.state.MsgCount,
@@ -81,6 +83,7 @@ func (w *mountWorker) setConnecting() {
 	w.state.ChatID = w.chatID
 	w.state.Connected = false
 	w.state.Connecting = true
+	w.state.CheckOnly = mountUsesAvailabilityCheck(w.cfg)
 	w.state.LastError = ""
 }
 
@@ -92,6 +95,7 @@ func (w *mountWorker) setConnected() {
 	w.state.ChatID = w.chatID
 	w.state.Connected = true
 	w.state.Connecting = false
+	w.state.CheckOnly = mountUsesAvailabilityCheck(w.cfg)
 	w.state.LastError = ""
 }
 
@@ -104,6 +108,7 @@ func (w *mountWorker) setDisconnected(err error) {
 	w.state.ChatID = w.chatID
 	w.state.Connected = false
 	w.state.Connecting = false
+	w.state.CheckOnly = mountUsesAvailabilityCheck(w.cfg)
 	if err != nil {
 		w.state.LastError = err.Error()
 	}
@@ -148,10 +153,28 @@ func (w *mountWorker) updateData(sys string, sats []int, snr []float64) uint64 {
 	w.state.ChatID = w.chatID
 	w.state.Connected = true
 	w.state.Connecting = false
+	w.state.CheckOnly = false
 	w.state.LastError = ""
 	w.state.UpdatedAt = time.Now()
 	w.state.MsgCount++
 	return w.state.MsgCount
+}
+
+func (w *mountWorker) updateAvailability(online bool, err error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	w.state.Name = w.cfg.Name
+	w.state.ChatID = w.chatID
+	w.state.CheckOnly = true
+	w.state.Connecting = false
+	w.state.Connected = online
+	w.state.UpdatedAt = time.Now()
+	if err != nil {
+		w.state.LastError = err.Error()
+	} else {
+		w.state.LastError = ""
+	}
 }
 
 func ensureMountStreams() {
@@ -240,12 +263,16 @@ func connectMount(m MountConfig) (net.Conn, *bufio.Reader, error) {
 		return nil, nil, err
 	}
 
-	auth := base64.StdEncoding.EncodeToString([]byte(m.User + ":" + m.Password))
-	req := fmt.Sprintf(
-		"GET /%s HTTP/1.0\r\nHost: %s\r\nUser-Agent: NTRIP ntrip-bot/1.0\r\nAuthorization: Basic %s\r\n\r\n",
-		m.Mount, m.Host, auth,
-	)
-	if _, err := fmt.Fprint(conn, req); err != nil {
+	var req strings.Builder
+	req.WriteString(fmt.Sprintf("GET /%s HTTP/1.0\r\n", m.Mount))
+	req.WriteString(fmt.Sprintf("Host: %s\r\n", m.Host))
+	req.WriteString("User-Agent: NTRIP ntrip-bot/1.0\r\n")
+	if strings.TrimSpace(m.User) != "" || strings.TrimSpace(m.Password) != "" {
+		auth := base64.StdEncoding.EncodeToString([]byte(m.User + ":" + m.Password))
+		req.WriteString(fmt.Sprintf("Authorization: Basic %s\r\n", auth))
+	}
+	req.WriteString("\r\n")
+	if _, err := fmt.Fprint(conn, req.String()); err != nil {
 		conn.Close()
 		return nil, nil, err
 	}
@@ -368,6 +395,23 @@ func fetchSourceTable(host, port, user, password string) ([]string, error) {
 	return mounts, nil
 }
 
+func mountUsesAvailabilityCheck(m MountConfig) bool {
+	return strings.TrimSpace(m.User) == "" && strings.TrimSpace(m.Password) == ""
+}
+
+func probeMountAvailability(m MountConfig) error {
+	mounts, err := fetchSourceTable(m.Host, m.Port, "", "")
+	if err != nil {
+		return err
+	}
+	for _, mount := range mounts {
+		if mount == m.Mount {
+			return nil
+		}
+	}
+	return fmt.Errorf("mount not found in sourcetable")
+}
+
 func (w *mountWorker) run() {
 	idleTimeout := time.Duration(w.cfg.Timeout) * time.Second
 	if idleTimeout <= 0 {
@@ -382,6 +426,24 @@ func (w *mountWorker) run() {
 		}
 
 		w.setConnecting()
+		if mountUsesAvailabilityCheck(w.cfg) {
+			logInfo("checking mount availability %s (%s:%s/%s)", w.cfg.Name, w.cfg.Host, w.cfg.Port, w.cfg.Mount)
+			err := probeMountAvailability(w.cfg)
+			if err != nil {
+				logWarn("availability check failed for mount %s: %v", w.cfg.Name, err)
+				w.updateAvailability(false, err)
+			} else {
+				w.updateAvailability(true, nil)
+				logInfo("mount availability confirmed for %s", w.cfg.Name)
+			}
+			select {
+			case <-w.stop:
+				return
+			case <-time.After(30 * time.Second):
+			}
+			continue
+		}
+
 		logInfo("connecting mount %s (%s:%s/%s)", w.cfg.Name, w.cfg.Host, w.cfg.Port, w.cfg.Mount)
 		conn, reader, err := connectMount(w.cfg)
 		if err != nil {

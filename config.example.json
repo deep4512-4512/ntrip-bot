@@ -2,6 +2,7 @@
   "telegram_token": "123456789:replace_with_real_token",
   "users": {
     "123456789": {
+      "monitoring_ttl_minutes": 3,
       "mounts": [
         {
           "name": "Base1",

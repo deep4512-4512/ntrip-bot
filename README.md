@@ -99,7 +99,7 @@ sudo /opt/ntrip-bot/update.sh
 Update to a specific version:
 
 ```bash
-sudo RELEASE_TAG=v1.0.4 /opt/ntrip-bot/update.sh
+sudo RELEASE_TAG=v1.0.X /opt/ntrip-bot/update.sh
 ```
 
 The updater downloads the release archive from GitHub, extracts it to a temporary directory, preserves the current `config.json`, installs the new binary, and restarts the service.
@@ -146,6 +146,7 @@ Example:
   "telegram_token": "123456:your_token_here",
   "users": {
     "123456789": {
+      "monitoring_ttl_minutes": 3,
       "mounts": [
         {
           "name": "Base1",
@@ -176,6 +177,7 @@ Global bot timing settings.
 
 - `dashboard_ttl_minutes` is the auto-stop time for `Monitoring`
 - `stream_idle_ttl_minutes` is the idle timeout for background user streams
+- each user can set a personal `Monitoring` timeout in Telegram settings, but it cannot exceed `dashboard_ttl_minutes`
 
 ## Telegram Usage
 
@@ -191,19 +193,31 @@ Buttons:
 
 ### Add Mount
 
-Manual mode:
+Manual mode with auth:
 
 ```text
 NAME HOST PORT USER PASS MOUNT
 ```
 
-Mount selection from host:
+Manual mode without auth:
+
+```text
+NAME HOST PORT MOUNT
+```
+
+Mount selection from host with auth:
 
 ```text
 NAME HOST PORT USER PASS
 ```
 
-In the second case, the bot requests the sourcetable and shows found mount points as buttons.
+Mount selection from host without auth:
+
+```text
+NAME HOST PORT
+```
+
+If login and password are omitted, the bot adds the mount point in online-check mode. In that mode it checks availability through the sourcetable and shows `Online` or `Offline`, but does not read RTCM packets.
 
 ## Development
 

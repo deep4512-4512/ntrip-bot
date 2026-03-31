@@ -32,7 +32,8 @@ type Config struct {
 }
 
 type UserConfig struct {
-	Mounts []MountConfig `json:"mounts"`
+	Mounts               []MountConfig `json:"mounts"`
+	MonitoringTTLMinutes int           `json:"monitoring_ttl_minutes,omitempty"`
 }
 
 type BotSettings struct {
@@ -49,8 +50,18 @@ var (
 func defaultBotSettings() BotSettings {
 	return BotSettings{
 		DashboardTTLMinutes:  5,
-		StreamIdleTTLMinutes: 6,
+		StreamIdleTTLMinutes: 10,
 	}
+}
+
+func normalizeUserConfig(userCfg UserConfig) UserConfig {
+	if userCfg.Mounts == nil {
+		userCfg.Mounts = []MountConfig{}
+	}
+	if userCfg.MonitoringTTLMinutes < 0 {
+		userCfg.MonitoringTTLMinutes = 0
+	}
+	return userCfg
 }
 
 func loadConfig() {
@@ -81,6 +92,9 @@ func loadConfig() {
 
 	if nextCfg.Users == nil {
 		nextCfg.Users = map[string]UserConfig{}
+	}
+	for key, userCfg := range nextCfg.Users {
+		nextCfg.Users[key] = normalizeUserConfig(userCfg)
 	}
 
 	cfgMu.Lock()
@@ -190,10 +204,6 @@ func saveBotSettings() error {
 	return nil
 }
 
-func dashboardTTL() time.Duration {
-	return time.Duration(botSettings.DashboardTTLMinutes) * time.Minute
-}
-
 func streamIdleTTL() time.Duration {
 	return time.Duration(botSettings.StreamIdleTTLMinutes) * time.Minute
 }
@@ -211,9 +221,10 @@ func ensureUserConfigLocked(chatID int64) UserConfig {
 			userCfg.Mounts = append(userCfg.Mounts, cfg.Mounts...)
 			logInfo("legacy mounts copied to user config: chat_id=%d mounts=%d", chatID, len(userCfg.Mounts))
 		}
-		cfg.Users[key] = userCfg
+		cfg.Users[key] = normalizeUserConfig(userCfg)
+		return cfg.Users[key]
 	}
-	return userCfg
+	return normalizeUserConfig(userCfg)
 }
 
 func ensureUserConfig(chatID int64) {
@@ -268,6 +279,7 @@ func addMount(chatID int64, m MountConfig) error {
 	cfgMu.Lock()
 	userCfg := ensureUserConfigLocked(chatID)
 	userCfg.Mounts = append(userCfg.Mounts, m)
+	userCfg = normalizeUserConfig(userCfg)
 	cfg.Users[userKey(chatID)] = userCfg
 	cfgMu.Unlock()
 	logInfo("mount added to config: chat_id=%d name=%s host=%s port=%s mount=%s", chatID, m.Name, m.Host, m.Port, m.Mount)
@@ -308,16 +320,39 @@ func updateMountField(chatID int64, index int, field, value string) (MountConfig
 	}
 
 	switch field {
+	case "name":
+		userCfg.Mounts[index].Name = value
 	case "host":
 		userCfg.Mounts[index].Host = value
+	case "port":
+		userCfg.Mounts[index].Port = value
+	case "user":
+		userCfg.Mounts[index].User = value
+	case "password":
+		userCfg.Mounts[index].Password = value
 	case "mount":
 		userCfg.Mounts[index].Mount = value
+	case "timeout":
+		timeout, err := strconv.Atoi(value)
+		if err != nil || timeout <= 0 {
+			cfgMu.Unlock()
+			return MountConfig{}, fmt.Errorf("timeout must be a positive integer")
+		}
+		userCfg.Mounts[index].Timeout = timeout
+	case "min_sats":
+		minSats, err := strconv.Atoi(value)
+		if err != nil || minSats < 0 {
+			cfgMu.Unlock()
+			return MountConfig{}, fmt.Errorf("min_sats must be zero or a positive integer")
+		}
+		userCfg.Mounts[index].MinSats = minSats
 	default:
 		cfgMu.Unlock()
 		return MountConfig{}, fmt.Errorf("unsupported field: %s", field)
 	}
 
 	updated := userCfg.Mounts[index]
+	userCfg = normalizeUserConfig(userCfg)
 	cfg.Users[userKey(chatID)] = userCfg
 	cfgMu.Unlock()
 	logInfo("mount updated: chat_id=%d index=%d field=%s value=%s name=%s", chatID, index, field, value, updated.Name)
@@ -326,6 +361,84 @@ func updateMountField(chatID int64, index int, field, value string) (MountConfig
 		return MountConfig{}, err
 	}
 	return updated, nil
+}
+
+func deleteMount(chatID int64, index int) (MountConfig, error) {
+	cfgMu.Lock()
+	userCfg := ensureUserConfigLocked(chatID)
+	if index < 0 || index >= len(userCfg.Mounts) {
+		cfgMu.Unlock()
+		return MountConfig{}, fmt.Errorf("mount index out of range")
+	}
+
+	deleted := userCfg.Mounts[index]
+	userCfg.Mounts = append(userCfg.Mounts[:index], userCfg.Mounts[index+1:]...)
+	userCfg = normalizeUserConfig(userCfg)
+	cfg.Users[userKey(chatID)] = userCfg
+	cfgMu.Unlock()
+	logInfo("mount deleted: chat_id=%d index=%d name=%s host=%s mount=%s", chatID, index, deleted.Name, deleted.Host, deleted.Mount)
+
+	if err := saveConfig(); err != nil {
+		return MountConfig{}, err
+	}
+	return deleted, nil
+}
+
+func userMonitoringTTLMinutes(chatID int64) int {
+	cfgMu.RLock()
+	defer cfgMu.RUnlock()
+
+	userCfg, ok := cfg.Users[userKey(chatID)]
+	if !ok || userCfg.MonitoringTTLMinutes <= 0 {
+		return botSettings.DashboardTTLMinutes
+	}
+	if userCfg.MonitoringTTLMinutes > botSettings.DashboardTTLMinutes {
+		return botSettings.DashboardTTLMinutes
+	}
+	return userCfg.MonitoringTTLMinutes
+}
+
+func userMonitoringTTL(chatID int64) time.Duration {
+	return time.Duration(userMonitoringTTLMinutes(chatID)) * time.Minute
+}
+
+func updateUserMonitoringTTL(chatID int64, value string) (int, error) {
+	ttl, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, fmt.Errorf("monitoring timeout must be a number in minutes")
+	}
+	if ttl < 0 {
+		return 0, fmt.Errorf("monitoring timeout cannot be negative")
+	}
+	if ttl > botSettings.DashboardTTLMinutes {
+		return 0, fmt.Errorf("maximum monitoring timeout is %d minutes", botSettings.DashboardTTLMinutes)
+	}
+
+	cfgMu.Lock()
+	userCfg := ensureUserConfigLocked(chatID)
+	userCfg.MonitoringTTLMinutes = ttl
+	userCfg = normalizeUserConfig(userCfg)
+	cfg.Users[userKey(chatID)] = userCfg
+	cfgMu.Unlock()
+
+	if err := saveConfig(); err != nil {
+		return 0, err
+	}
+
+	applied := userMonitoringTTLMinutes(chatID)
+	logInfo("user monitoring timeout updated: chat_id=%d requested=%d applied=%d", chatID, ttl, applied)
+	return applied, nil
+}
+
+func monitoringTTLDescription(chatID int64) string {
+	cfgMu.RLock()
+	userCfg, ok := cfg.Users[userKey(chatID)]
+	cfgMu.RUnlock()
+
+	if !ok || userCfg.MonitoringTTLMinutes <= 0 {
+		return fmt.Sprintf("default (%d min)", botSettings.DashboardTTLMinutes)
+	}
+	return fmt.Sprintf("%d min", userMonitoringTTLMinutes(chatID))
 }
 
 func telegramToken() string {

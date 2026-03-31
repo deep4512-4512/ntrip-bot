@@ -58,6 +58,8 @@ func handleCallbackQuery(bot *tgbotapi.BotAPI, up tgbotapi.Update) bool {
 		openSettings(bot, id)
 	case "settings_mounts":
 		openMountSettings(bot, id)
+	case "settings_monitoring_ttl":
+		beginUserSettingEdit(bot, id, "monitoring_ttl")
 	default:
 		handleCallbackAction(bot, id, up.CallbackQuery.Data)
 	}
@@ -92,6 +94,7 @@ func resetUserFlowState(id int64) {
 	session.EditSession = nil
 	session.AddMode = false
 	session.PendingMountSelect = nil
+	session.DeleteMountIndex = nil
 }
 
 func beginAddMountFlow(id int64) {
@@ -102,6 +105,7 @@ func beginAddMountFlow(id int64) {
 	session.AddMode = true
 	session.EditSession = nil
 	session.PendingMountSelect = nil
+	session.DeleteMountIndex = nil
 }
 
 func openSettings(bot *tgbotapi.BotAPI, id int64) {
@@ -109,8 +113,9 @@ func openSettings(bot *tgbotapi.BotAPI, id int64) {
 	session := ensureUserSessionLocked(id)
 	session.EditSession = nil
 	session.PendingMountSelect = nil
+	session.DeleteMountIndex = nil
 	sessionMu.Unlock()
-	sendWithKeyboard(bot, id, settingsText(), settingsKeyboard())
+	sendWithKeyboard(bot, id, userSettingsText(id), settingsKeyboard())
 }
 
 func openMountSettings(bot *tgbotapi.BotAPI, id int64) {
@@ -118,6 +123,7 @@ func openMountSettings(bot *tgbotapi.BotAPI, id int64) {
 	session := ensureUserSessionLocked(id)
 	session.EditSession = nil
 	session.PendingMountSelect = nil
+	session.DeleteMountIndex = nil
 	sessionMu.Unlock()
 
 	if mountCount(id) == 0 {
@@ -129,7 +135,7 @@ func openMountSettings(bot *tgbotapi.BotAPI, id int64) {
 }
 
 func addMountInstructions() string {
-	return "Send:\nNAME HOST PORT USER PASS\nfor mount list\n\nor\n\nNAME HOST PORT USER PASS MOUNT\nfor manual add"
+	return "Send one of these formats:\n\nNAME HOST PORT\nfor mount list without auth\n\nNAME HOST PORT USER PASS\nfor mount list with auth\n\nNAME HOST PORT MOUNT\nfor manual add without auth\n\nNAME HOST PORT USER PASS MOUNT\nfor manual add with auth"
 }
 
 func parseCallbackIndex(data, prefix string) (int, bool) {
@@ -145,7 +151,9 @@ func handleCallbackAction(bot *tgbotapi.BotAPI, id int64, data string) {
 	switch {
 	case strings.HasPrefix(data, "mount_edit:"):
 		sessionMu.Lock()
-		ensureUserSessionLocked(id).EditSession = nil
+		session := ensureUserSessionLocked(id)
+		session.EditSession = nil
+		session.DeleteMountIndex = nil
 		sessionMu.Unlock()
 		index, ok := parseCallbackIndex(data, "mount_edit:")
 		if !ok {
@@ -153,26 +161,67 @@ func handleCallbackAction(bot *tgbotapi.BotAPI, id int64, data string) {
 			return
 		}
 		sendWithKeyboard(bot, id, mountDetailsText(id, index), mountEditKeyboard(index))
+	case strings.HasPrefix(data, "edit_name:"):
+		beginEditField(bot, id, data, "edit_name:", "name")
 	case strings.HasPrefix(data, "edit_host:"):
-		index, ok := parseCallbackIndex(data, "edit_host:")
-		if !ok {
-			sendWithKeyboard(bot, id, "Invalid mount selection", settingsKeyboard())
-			return
-		}
-		sessionMu.Lock()
-		ensureUserSessionLocked(id).EditSession = &editSession{MountIndex: index, Field: "host"}
-		sessionMu.Unlock()
-		sendWithKeyboard(bot, id, "Send new host value", mountEditKeyboard(index))
+		beginEditField(bot, id, data, "edit_host:", "host")
+	case strings.HasPrefix(data, "edit_port:"):
+		beginEditField(bot, id, data, "edit_port:", "port")
+	case strings.HasPrefix(data, "edit_user:"):
+		beginEditField(bot, id, data, "edit_user:", "user")
+	case strings.HasPrefix(data, "edit_password:"):
+		beginEditField(bot, id, data, "edit_password:", "password")
 	case strings.HasPrefix(data, "edit_mount:"):
-		index, ok := parseCallbackIndex(data, "edit_mount:")
+		beginEditField(bot, id, data, "edit_mount:", "mount")
+	case strings.HasPrefix(data, "edit_timeout:"):
+		beginEditField(bot, id, data, "edit_timeout:", "timeout")
+	case strings.HasPrefix(data, "edit_min_sats:"):
+		beginEditField(bot, id, data, "edit_min_sats:", "min_sats")
+	case strings.HasPrefix(data, "delete_mount:"):
+		index, ok := parseCallbackIndex(data, "delete_mount:")
 		if !ok {
 			sendWithKeyboard(bot, id, "Invalid mount selection", settingsKeyboard())
 			return
 		}
 		sessionMu.Lock()
-		ensureUserSessionLocked(id).EditSession = &editSession{MountIndex: index, Field: "mount"}
+		session := ensureUserSessionLocked(id)
+		session.EditSession = nil
+		session.DeleteMountIndex = &index
 		sessionMu.Unlock()
-		sendWithKeyboard(bot, id, "Send new mount value", mountEditKeyboard(index))
+		sendWithKeyboard(bot, id, "Delete this mount point?", confirmDeleteKeyboard(index))
+	case strings.HasPrefix(data, "cancel_delete:"):
+		index, ok := parseCallbackIndex(data, "cancel_delete:")
+		if !ok {
+			sendWithKeyboard(bot, id, "Invalid mount selection", settingsKeyboard())
+			return
+		}
+		sessionMu.Lock()
+		ensureUserSessionLocked(id).DeleteMountIndex = nil
+		sessionMu.Unlock()
+		sendWithKeyboard(bot, id, mountDetailsText(id, index), mountEditKeyboard(index))
+	case strings.HasPrefix(data, "confirm_delete:"):
+		index, ok := parseCallbackIndex(data, "confirm_delete:")
+		if !ok {
+			sendWithKeyboard(bot, id, "Invalid mount selection", settingsKeyboard())
+			return
+		}
+		sessionMu.Lock()
+		session := ensureUserSessionLocked(id)
+		deleteIndex := session.DeleteMountIndex
+		session.DeleteMountIndex = nil
+		sessionMu.Unlock()
+		if deleteIndex == nil || *deleteIndex != index {
+			sendWithKeyboard(bot, id, "Delete confirmation expired", settingsKeyboard())
+			return
+		}
+		deleted, err := deleteMount(id, index)
+		if err != nil {
+			logError("delete mount: %v", err)
+			sendWithKeyboard(bot, id, "Failed to delete mount", settingsKeyboard())
+			return
+		}
+		reloadMountStreams(id)
+		sendWithKeyboard(bot, id, "Mount deleted: "+deleted.Name, settingsKeyboard())
 	case strings.HasPrefix(data, "add_mount_pick:"):
 		index, ok := parseCallbackIndex(data, "add_mount_pick:")
 		if !ok {
@@ -215,6 +264,45 @@ func handleCallbackAction(bot *tgbotapi.BotAPI, id int64, data string) {
 	}
 }
 
+func beginEditField(bot *tgbotapi.BotAPI, id int64, data, prefix, field string) {
+	index, ok := parseCallbackIndex(data, prefix)
+	if !ok {
+		sendWithKeyboard(bot, id, "Invalid mount selection", settingsKeyboard())
+		return
+	}
+	sessionMu.Lock()
+	session := ensureUserSessionLocked(id)
+	session.EditSession = &editSession{MountIndex: index, Field: field}
+	session.DeleteMountIndex = nil
+	sessionMu.Unlock()
+	sendWithKeyboard(bot, id, mountEditPrompt(field), mountEditKeyboard(index))
+}
+
+func beginUserSettingEdit(bot *tgbotapi.BotAPI, id int64, field string) {
+	sessionMu.Lock()
+	session := ensureUserSessionLocked(id)
+	session.EditSession = &editSession{MountIndex: -1, Field: field}
+	session.DeleteMountIndex = nil
+	sessionMu.Unlock()
+	sendWithKeyboard(bot, id, monitoringTimeoutPrompt(id), settingsKeyboard())
+}
+
+func normalizeMountFieldInput(field, text string) string {
+	if (field == "user" || field == "password") && text == "-" {
+		return ""
+	}
+	return text
+}
+
+func requiresNonEmptyMountField(field string) bool {
+	switch field {
+	case "user", "password":
+		return false
+	default:
+		return true
+	}
+}
+
 func handleEditMessage(bot *tgbotapi.BotAPI, id int64, text string) bool {
 	sessionMu.Lock()
 	userSession := ensureUserSessionLocked(id)
@@ -225,15 +313,20 @@ func handleEditMessage(bot *tgbotapi.BotAPI, id int64, text string) bool {
 		return false
 	}
 
-	if text == "" {
+	if editSession.MountIndex < 0 {
+		return handleUserSettingMessage(bot, id, editSession, text)
+	}
+
+	value := normalizeMountFieldInput(editSession.Field, text)
+	if value == "" && requiresNonEmptyMountField(editSession.Field) {
 		sendWithKeyboard(bot, id, "Value cannot be empty", mountEditKeyboard(editSession.MountIndex))
 		return true
 	}
 
-	updated, err := updateMountField(id, editSession.MountIndex, editSession.Field, text)
+	_, err := updateMountField(id, editSession.MountIndex, editSession.Field, value)
 	if err != nil {
 		logError("update mount field: %v", err)
-		sendWithKeyboard(bot, id, "Failed to save settings", settingsKeyboard())
+		sendWithKeyboard(bot, id, "Failed to save settings: "+err.Error(), mountEditKeyboard(editSession.MountIndex))
 		return true
 	}
 
@@ -245,10 +338,37 @@ func handleEditMessage(bot *tgbotapi.BotAPI, id int64, text string) bool {
 	sendWithKeyboard(
 		bot,
 		id,
-		fmt.Sprintf("Saved.\n\nName: %s\nHost: %s\nMount: %s", updated.Name, updated.Host, updated.Mount),
+		mountDetailsText(id, editSession.MountIndex),
 		mountEditKeyboard(editSession.MountIndex),
 	)
 	return true
+}
+
+func handleUserSettingMessage(bot *tgbotapi.BotAPI, id int64, editSession *editSession, text string) bool {
+	switch editSession.Field {
+	case "monitoring_ttl":
+		applied, err := updateUserMonitoringTTL(id, text)
+		if err != nil {
+			logError("update user monitoring ttl: %v", err)
+			sendWithKeyboard(bot, id, "Failed to save settings: "+err.Error(), settingsKeyboard())
+			return true
+		}
+		sessionMu.Lock()
+		ensureUserSessionLocked(id).EditSession = nil
+		sessionMu.Unlock()
+		msg := fmt.Sprintf("Monitoring timeout saved: %d min\nMaximum allowed: %d min", applied, botSettings.DashboardTTLMinutes)
+		if strings.TrimSpace(text) == "0" {
+			msg = fmt.Sprintf("Monitoring timeout reset to default: %d min", applied)
+		}
+		sendWithKeyboard(bot, id, msg, settingsKeyboard())
+		return true
+	default:
+		sessionMu.Lock()
+		ensureUserSessionLocked(id).EditSession = nil
+		sessionMu.Unlock()
+		sendWithKeyboard(bot, id, "Unsupported settings field", settingsKeyboard())
+		return true
+	}
 }
 
 func handleAddMountMessage(bot *tgbotapi.BotAPI, id int64, text string) bool {
@@ -262,7 +382,7 @@ func handleAddMountMessage(bot *tgbotapi.BotAPI, id int64, text string) bool {
 	}
 
 	parts := strings.Fields(text)
-	if len(parts) >= 6 {
+	if len(parts) == 6 {
 		logInfo("manual mount add requested: chat_id=%d name=%s host=%s port=%s mount=%s", id, parts[0], parts[1], parts[2], parts[5])
 		cfg := MountConfig{
 			Name:     parts[0],
@@ -288,6 +408,32 @@ func handleAddMountMessage(bot *tgbotapi.BotAPI, id int64, text string) bool {
 		return true
 	}
 
+	if len(parts) == 4 {
+		logInfo("manual mount add without auth requested: chat_id=%d name=%s host=%s port=%s mount=%s", id, parts[0], parts[1], parts[2], parts[3])
+		cfg := MountConfig{
+			Name:     parts[0],
+			Host:     parts[1],
+			Port:     parts[2],
+			User:     "",
+			Password: "",
+			Mount:    parts[3],
+			Timeout:  5,
+			MinSats:  10,
+		}
+		if err := addMount(id, cfg); err != nil {
+			logError("save config: %v", err)
+			if _, sendErr := bot.Send(tgbotapi.NewMessage(id, "Failed to save mount")); sendErr != nil {
+				logError("send save error: %v", sendErr)
+			}
+			return true
+		}
+
+		startMountStream(id, cfg)
+		resetUserFlowState(id)
+		sendMenu(bot, id, "Mount added in online check mode")
+		return true
+	}
+
 	if len(parts) == 5 {
 		name, host, port, user, password := parts[0], parts[1], parts[2], parts[3], parts[4]
 		logInfo("mount list requested: chat_id=%d name=%s host=%s port=%s", id, name, host, port)
@@ -308,6 +454,30 @@ func handleAddMountMessage(bot *tgbotapi.BotAPI, id int64, text string) bool {
 		}
 		sessionMu.Unlock()
 		logInfo("mount list prepared for selection: chat_id=%d name=%s mounts=%d", id, name, len(mounts))
+		sendWithKeyboard(bot, id, "Choose mount point for "+name+":", pendingMountKeyboard(id))
+		return true
+	}
+
+	if len(parts) == 3 {
+		name, host, port := parts[0], parts[1], parts[2]
+		logInfo("mount list requested without auth: chat_id=%d name=%s host=%s port=%s", id, name, host, port)
+		mounts, err := fetchSourceTable(host, port, "", "")
+		if err != nil {
+			logError("fetch sourcetable: %v", err)
+			sendMenu(bot, id, "Failed to load mount list from host")
+			return true
+		}
+		sessionMu.Lock()
+		ensureUserSessionLocked(id).PendingMountSelect = &pendingMountSelection{
+			Name:     name,
+			Host:     host,
+			Port:     port,
+			User:     "",
+			Password: "",
+			Mounts:   mounts,
+		}
+		sessionMu.Unlock()
+		logInfo("mount list prepared for unauthenticated selection: chat_id=%d name=%s mounts=%d", id, name, len(mounts))
 		sendWithKeyboard(bot, id, "Choose mount point for "+name+":", pendingMountKeyboard(id))
 		return true
 	}

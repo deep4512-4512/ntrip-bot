@@ -29,6 +29,15 @@ func formatMountState(state MountState) string {
 	if state.LastError != "" {
 		b.WriteString("Error: " + state.LastError + "\n")
 	}
+	if state.CheckOnly {
+		if !state.UpdatedAt.IsZero() {
+			b.WriteString("Last check: " + state.UpdatedAt.Format("15:04:05") + "\n")
+		} else {
+			b.WriteString("Last check: waiting for probe\n")
+		}
+		b.WriteString("Mode: online check only\n")
+		return b.String()
+	}
 	if !state.UpdatedAt.IsZero() {
 		b.WriteString("Last packet: " + state.UpdatedAt.Format("15:04:05") + "\n")
 	} else {
@@ -129,8 +138,32 @@ func hostEmoji() string {
 	return "\U0001F310"
 }
 
+func nameEmoji() string {
+	return "\U0001F3F7\uFE0F"
+}
+
+func portEmoji() string {
+	return "\U0001F522"
+}
+
+func userEmoji() string {
+	return "\U0001F464"
+}
+
+func passwordEmoji() string {
+	return "\U0001F511"
+}
+
 func mountEmoji() string {
 	return "\U0001F4E1"
+}
+
+func timeoutEmoji() string {
+	return "\u23F1\uFE0F"
+}
+
+func minSatsEmoji() string {
+	return "\U0001F9EE"
 }
 
 func homeEmoji() string {
@@ -139,6 +172,10 @@ func homeEmoji() string {
 
 func cancelEmoji() string {
 	return "\u2716"
+}
+
+func deleteEmoji() string {
+	return "\U0001F5D1\uFE0F"
 }
 
 func buildDashboardText(chatID int64) string {
@@ -199,6 +236,9 @@ func sendWithKeyboard(bot *tgbotapi.BotAPI, id int64, text string, markup interf
 func settingsKeyboard() tgbotapi.InlineKeyboardMarkup {
 	return tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(timeoutEmoji()+" Monitoring timeout", "settings_monitoring_ttl"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData(satelliteEmoji()+" Mounts", "settings_mounts"),
 			tgbotapi.NewInlineKeyboardButtonData(backEmoji()+" Back", "menu"),
 		),
@@ -216,19 +256,6 @@ func mountListKeyboard(chatID int64) tgbotapi.InlineKeyboardMarkup {
 		tgbotapi.NewInlineKeyboardButtonData(backEmoji()+" Back", "settings"),
 	))
 	return tgbotapi.NewInlineKeyboardMarkup(rows...)
-}
-
-func mountEditKeyboard(index int) tgbotapi.InlineKeyboardMarkup {
-	return tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData(hostEmoji()+" Edit host", fmt.Sprintf("edit_host:%d", index)),
-			tgbotapi.NewInlineKeyboardButtonData(mountEmoji()+" Edit mount", fmt.Sprintf("edit_mount:%d", index)),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData(backEmoji()+" Back", "settings_mounts"),
-			tgbotapi.NewInlineKeyboardButtonData(homeEmoji()+" Menu", "menu"),
-		),
-	)
 }
 
 func pendingMountKeyboard(chatID int64) tgbotapi.InlineKeyboardMarkup {
@@ -256,18 +283,79 @@ func pendingMountKeyboard(chatID int64) tgbotapi.InlineKeyboardMarkup {
 	return tgbotapi.NewInlineKeyboardMarkup(rows...)
 }
 
-func settingsText() string {
-	return "Settings\n\nChoose a mount point to edit host or mount path."
-}
-
 func mountDetailsText(chatID int64, index int) string {
 	m, ok := mountAt(chatID, index)
 	if !ok {
 		return "Mount not found"
 	}
+	password := "not set"
+	if m.Password != "" {
+		password = strings.Repeat("*", minInt(len(m.Password), 8))
+	}
 	return fmt.Sprintf(
-		"Mount settings\n\nName: %s\nHost: %s\nPort: %s\nMount: %s\nUser: %s",
-		m.Name, m.Host, m.Port, m.Mount, m.User,
+		"Mount settings\n\nName: %s\nHost: %s\nPort: %s\nUser: %s\nPassword: %s\nMount: %s\nTimeout: %d sec\nMin sats: %d",
+		m.Name, m.Host, m.Port, m.User, password, m.Mount, m.Timeout, m.MinSats,
+	)
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func fieldLabel(field string) string {
+	switch field {
+	case "name":
+		return "name"
+	case "host":
+		return "host"
+	case "port":
+		return "port"
+	case "user":
+		return "user"
+	case "password":
+		return "password"
+	case "mount":
+		return "mount"
+	case "timeout":
+		return "timeout"
+	case "min_sats":
+		return "minimum satellites"
+	default:
+		return field
+	}
+}
+
+func mountEditPrompt(field string) string {
+	switch field {
+	case "user":
+		return "Send new user value or - to clear it"
+	case "password":
+		return "Send new password value or - to clear it"
+	case "timeout":
+		return "Send new timeout value in seconds"
+	case "min_sats":
+		return "Send new minimum satellites value"
+	default:
+		return "Send new " + fieldLabel(field) + " value"
+	}
+}
+
+func userSettingsText(chatID int64) string {
+	return fmt.Sprintf(
+		"Settings\n\nMonitoring timeout: %s\nMaximum available: %d min\n\nChoose a mount point to edit or remove.",
+		monitoringTTLDescription(chatID),
+		botSettings.DashboardTTLMinutes,
+	)
+}
+
+func monitoringTimeoutPrompt(chatID int64) string {
+	return fmt.Sprintf(
+		"Send monitoring timeout in minutes.\nUse 0 to reset to default.\nMaximum allowed: %d min.\nCurrent value: %s.",
+		botSettings.DashboardTTLMinutes,
+		monitoringTTLDescription(chatID),
 	)
 }
 
@@ -283,6 +371,46 @@ func keyboard() tgbotapi.InlineKeyboardMarkup {
 		),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData(settingsEmoji()+" Settings", "settings"),
+		),
+	)
+}
+
+func mountEditKeyboard(index int) tgbotapi.InlineKeyboardMarkup {
+	return tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(nameEmoji()+" Edit name", fmt.Sprintf("edit_name:%d", index)),
+			tgbotapi.NewInlineKeyboardButtonData(hostEmoji()+" Edit host", fmt.Sprintf("edit_host:%d", index)),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(portEmoji()+" Edit port", fmt.Sprintf("edit_port:%d", index)),
+			tgbotapi.NewInlineKeyboardButtonData(userEmoji()+" Edit user", fmt.Sprintf("edit_user:%d", index)),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(passwordEmoji()+" Edit password", fmt.Sprintf("edit_password:%d", index)),
+			tgbotapi.NewInlineKeyboardButtonData(mountEmoji()+" Edit mount", fmt.Sprintf("edit_mount:%d", index)),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(timeoutEmoji()+" Edit timeout", fmt.Sprintf("edit_timeout:%d", index)),
+			tgbotapi.NewInlineKeyboardButtonData(minSatsEmoji()+" Edit min sats", fmt.Sprintf("edit_min_sats:%d", index)),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(deleteEmoji()+" Delete", fmt.Sprintf("delete_mount:%d", index)),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(backEmoji()+" Back", "settings_mounts"),
+			tgbotapi.NewInlineKeyboardButtonData(homeEmoji()+" Menu", "menu"),
+		),
+	)
+}
+
+func confirmDeleteKeyboard(index int) tgbotapi.InlineKeyboardMarkup {
+	return tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(deleteEmoji()+" Confirm delete", fmt.Sprintf("confirm_delete:%d", index)),
+			tgbotapi.NewInlineKeyboardButtonData(cancelEmoji()+" Cancel", fmt.Sprintf("cancel_delete:%d", index)),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(backEmoji()+" Back", "settings_mounts"),
 		),
 	)
 }
